@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+.env
+
+data/enterprise.db
+data/chroma_db/
+
+*.png
+*.log
+
+.DS_Store

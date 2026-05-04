@@ -1,0 +1,25 @@
+IT Policy Document
+
+Laptop Issue Policy:
+Employees facing laptop issues should raise an IT ticket with issue details and priority.
+
+VPN Issue Policy:
+Employees facing VPN login or connectivity issues should first check if there is a known outage or planned maintenance.
+
+Outlook Email Policy:
+Employees facing Outlook or email issues should raise an IT ticket. During planned maintenance, ticket creation may be delayed.
+
+Printer Issue Policy:
+Printer-related issues should be reported through the IT ticket system.
+
+Software Installation Policy:
+Employees can request software installation through the IT support process. Some software may require manager approval or license validation.
+
+Asset Request Policy:
+Employees can request assets such as laptop, monitor, keyboard, mouse, VPN token, or software license.
+
+Asset Approval Policy:
+Asset requests follow this approval flow: Employee request → Manager approval → IT approval → Inventory validation → Fulfillment.
+
+IT Ticket Policy:
+Every IT ticket should include issue type, priority, status, assigned engineer, and employee details.
