@@ -26,8 +26,8 @@ def send_email_via_power_automate(to_email: str, subject: str, body: str):
 
         if response.status_code in [200, 201, 202]:
             return "Email sent successfully."
-
-        return f"Email failed. Status: {response.status_code}, Response: {response.text}"
+        else:
+            return f"Email failed. Status: {response.status_code}, Response: {response.text}"
 
     except Exception as e:
-        return f"Email failed: {str(e)}"
+        return f"Email error: {str(e)}"
