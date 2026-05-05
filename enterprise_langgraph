@@ -1,0 +1,33 @@
+digraph {
+	rankdir=TB size=10
+	A [label="User Query (Streamlit UI)"]
+	B [label="Intent Detection (Router)"]
+	C [label="RBAC Check"]
+	D [label="Route Decision"]
+	E [label="Conversation Node"]
+	F [label="Guardrail Node"]
+	G [label="HR RAG Agent"]
+	H [label="HR Workflow Agent"]
+	I [label="IT Ticket Agent"]
+	J [label="Asset Request Agent"]
+	K [label="Final Response"]
+	L [label="Save Memory"]
+	M [label="Save Logs"]
+	N [label="Display Output"]
+	A -> B
+	B -> C
+	C -> D
+	D -> E [label=Greeting]
+	D -> F [label="Out of Scope"]
+	D -> G [label="HR Policy"]
+	G -> K
+	D -> H [label="Leave Flow"]
+	H -> K
+	D -> I [label="IT Ticket"]
+	I -> K
+	D -> J [label="Asset Request"]
+	J -> K
+	K -> L
+	L -> M
+	M -> N
+}

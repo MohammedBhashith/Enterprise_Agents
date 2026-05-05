@@ -6,6 +6,7 @@ import json
 import dateparser
 from datetime import datetime
 from llm_config import get_llm
+from web_search import web_search
 
 from rbac import validate_user_or_message
 from rag import answer_policy_question
@@ -159,6 +160,10 @@ def detect_intent(query: str) -> str:
         "i need a laptop",
     ]):
         return "request_asset"
+
+    if any(word in q for word in ["how to fix", "solution", "troubleshoot", "resolve error", "error code"]):
+         if any(it_word in q for it_word in ["outlook", "vpn", "printer", "network", "laptop", "software"]):
+            return "web_search"
 
     # IT (natural language supported)
     if any(phrase in q for phrase in [
@@ -476,6 +481,10 @@ def extract_asset_from_query(query: str):
 def it_node(state: AgentState):
     query = state["query"].lower()
 
+    if state["intent"] == "web_search":
+        state["response"] = web_search(state["query"])
+        return state
+
     if state["intent"] == "view_all_tickets":
         state["response"] = view_all_tickets(state["user_id"])
         return state
@@ -640,6 +649,7 @@ def route_after_rbac(state):
         "resolve_ticket",
         "inventory_status",
         "asset_status",
+        "web_search",
     ]:
         return "it"
     

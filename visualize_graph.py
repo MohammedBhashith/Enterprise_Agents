@@ -1,36 +1,52 @@
-from graph import app_graph
+from graphviz import Digraph
 
-def save_graph_visual():
-    try:
-        png_data = app_graph.get_graph().draw_mermaid_png()
+dot = Digraph(format='png')
+dot.attr(rankdir='TB', size='10')
 
-        with open("langgraph_workflow.png", "wb") as f:
-            f.write(png_data)
+# Nodes
+dot.node('A', 'User Query (Streamlit UI)')
+dot.node('B', 'Intent Detection (Router)')
+dot.node('C', 'RBAC Check')
+dot.node('D', 'Route Decision')
 
-        print("LangGraph visual saved as langgraph_workflow.png")
+# Branches
+dot.node('E', 'Conversation Node')
+dot.node('F', 'Guardrail Node')
 
-    except Exception as e:
-        print("Could not generate PNG automatically.")
-        print("Reason:", e)
-        print("\nUse this Mermaid diagram manually:\n")
+dot.node('G', 'HR RAG Agent')
+dot.node('H', 'HR Workflow Agent')
 
-        print("""
-graph TD
-    A[User Query] --> B[Router Node]
-    B --> C[RBAC Node]
-    C --> D{Conditional Routing}
+dot.node('I', 'IT Ticket Agent')
+dot.node('J', 'Asset Request Agent')
 
-    D -->|Policy Question| E[Policy RAG Agent]
-    D -->|Leave Workflow| F[HR Agent]
-    D -->|IT Workflow| G[IT Agent]
-    D -->|Unknown Query| H[Fallback Node]
+dot.node('K', 'Final Response')
+dot.node('L', 'Save Memory')
+dot.node('M', 'Save Logs')
+dot.node('N', 'Display Output')
 
-    E --> I[Final Response]
-    F --> I
-    G --> I
-    H --> I
-""")
+# Edges
+dot.edge('A', 'B')
+dot.edge('B', 'C')
+dot.edge('C', 'D')
 
+dot.edge('D', 'E', label='Greeting')
+dot.edge('D', 'F', label='Out of Scope')
 
-if __name__ == "__main__":
-    save_graph_visual()
+dot.edge('D', 'G', label='HR Policy')
+dot.edge('G', 'K')
+
+dot.edge('D', 'H', label='Leave Flow')
+dot.edge('H', 'K')
+
+dot.edge('D', 'I', label='IT Ticket')
+dot.edge('I', 'K')
+
+dot.edge('D', 'J', label='Asset Request')
+dot.edge('J', 'K')
+
+dot.edge('K', 'L')
+dot.edge('L', 'M')
+dot.edge('M', 'N')
+
+# Render
+dot.render('enterprise_langgraph', view=True)
