@@ -429,10 +429,22 @@ elif page == "Logs":
             st.info("No logs found.")
         else:
             for log in logs:
+                user_id_log, query, intent, agent, tool_used, response, response_time, created_at = log
+
                 with st.container(border=True):
-                    st.write(f"**User:** {log[0]}")
-                    st.write(f"**Query:** {log[1]}")
-                    st.write(f"**Agent:** {log[2]}")
-                    st.write(f"**Tool Used:** {log[3]}")
-                    st.write(f"**Response:** {log[4]}")
-                    st.caption(f"Time: {log[5]}")
+                    col1, col2, col3 = st.columns(3)
+
+                    with col1:
+                        st.write(f"**User:** {user_id_log}")
+                        st.write(f"**Intent:** {intent}")
+
+                    with col2:
+                        st.write(f"**Agent:** {agent}")
+                        st.write(f"**Tool:** {tool_used}")
+
+                    with col3:
+                        st.write(f"**Response Time:** {response_time} sec")
+                        st.caption(f"Time: {created_at}")
+
+                    st.write(f"**Query:** {query}")
+                    st.write(f"**Response:** {response}")

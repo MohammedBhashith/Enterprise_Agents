@@ -7,6 +7,7 @@ import dateparser
 from datetime import datetime
 from llm_config import get_llm
 from web_search import web_search
+import time
 
 from rbac import validate_user_or_message
 from rag import answer_policy_question
@@ -705,7 +706,53 @@ def build_graph():
 app_graph = build_graph()
 
 
+def get_agent_and_tool(intent: str):
+    if intent in ["greeting", "thanks", "bye"]:
+        return "Conversation Agent", "conversation_response"
+
+    if intent == "policy":
+        return "RAG Agent", "policy_retrieval"
+
+    if intent in [
+        "apply_leave",
+        "leave_status",
+        "approve_leave",
+        "reject_leave",
+        "cancel_leave",
+        "leave_balance",
+        "leave_history",
+        "pending_leaves",
+    ]:
+        return "HR Agent", intent
+
+    if intent in [
+        "create_ticket",
+        "ticket_status",
+        "view_all_tickets",
+        "assign_ticket",
+        "resolve_ticket",
+        "inventory_status",
+        "web_search",
+    ]:
+        return "IT Agent", intent
+
+    if intent in [
+        "request_asset",
+        "asset_status",
+        "approve_asset_manager",
+        "approve_asset_it",
+    ]:
+        return "Asset Agent", intent
+
+    if intent == "out_of_scope":
+        return "Guardrail Agent", "scope_validation"
+
+    return "Unknown Agent", "unknown"
+
+
 def run_agent(user_id: str, query: str) -> str:
+    start_time = time.perf_counter()
+
     result = app_graph.invoke({
         "user_id": user_id,
         "query": query,
@@ -713,20 +760,26 @@ def run_agent(user_id: str, query: str) -> str:
         "response": None,
     })
 
+    response_time = round(time.perf_counter() - start_time, 3)
+
     intent = result.get("intent") or "unknown"
     response = result.get("response") or "No response generated."
 
+    agent, tool_used = get_agent_and_tool(intent)
+
     save_memory(user_id, "last_query", query)
+
     save_log(
         user_id=user_id,
         query=query,
-        agent=intent,
-        tool_used=intent,
-        response=response
+        intent=intent,
+        agent=agent,
+        tool_used=tool_used,
+        response=response,
+        response_time=response_time
     )
 
     return response
-
 
 if __name__ == "__main__":
     print(run_agent("EMP001", "What is the notice period policy?"))
