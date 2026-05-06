@@ -1,6 +1,6 @@
 from typing import TypedDict, Optional
 from langgraph.graph import StateGraph, END
-from memory import save_memory
+from memory import save_memory,get_first_user_query
 from logger import save_log
 import json
 import dateparser
@@ -8,6 +8,9 @@ from datetime import datetime
 from llm_config import get_llm
 from web_search import web_search
 import time
+from pydantic import ValidationError
+
+from schemas import IntentResult, LeaveDetails
 
 from rbac import validate_user_or_message
 from rag import answer_policy_question
@@ -38,9 +41,62 @@ class AgentState(TypedDict):
     query: str
     intent: Optional[str]
     response: Optional[str]
+    memory: dict = {}
 
 
-def detect_intent(query: str) -> str:
+def detect_intent_with_llm(query: str) -> str:
+    prompt = f"""
+You are an intent classifier for an Enterprise AI Copilot.
+
+Classify the user query into exactly one intent.
+
+Allowed intents:
+greeting, thanks, bye,
+policy,
+apply_leave, leave_balance, leave_history, pending_leaves, cancel_leave, approve_leave, reject_leave,
+create_ticket, ticket_status, view_all_tickets, assign_ticket, resolve_ticket,
+request_asset, asset_status, approve_asset_manager, approve_asset_it, inventory_status,
+memory_query,
+web_search,
+out_of_scope
+
+Rules:
+- If user wants leave, absence, sick leave, casual leave, not well, fever, dental appointment, family function, or asks to take off → apply_leave.
+- If user asks leave balance or remaining leaves → leave_balance.
+- If user asks previous/first/last query or what they asked before → memory_query.
+- If user asks HR/IT policy information → policy.
+- If user has laptop, VPN, Outlook, printer, network, or software issue → create_ticket.
+- If user asks their ticket status → ticket_status.
+- If user asks for monitor, laptop, keyboard, mouse, VPN token, or software license as an asset → request_asset.
+- If unrelated to HR, IT, assets, policies, or memory → out_of_scope.
+
+Return ONLY valid JSON with:
+intent, confidence, reason
+
+User query:
+{query}
+"""
+
+    try:
+        llm = get_llm(temperature=0)
+        response = llm.invoke(prompt)
+        content = response.content if hasattr(response, "content") else str(response)
+
+        content = content.strip().replace("```json", "").replace("```", "").strip()
+        data = json.loads(content)
+
+        parsed = IntentResult(**data)
+
+        if parsed.confidence < 0.45:
+            return "out_of_scope"
+
+        return parsed.intent
+
+    except Exception:
+        return detect_intent_rules(query)
+
+
+def detect_intent_rules(query: str) -> str:
     q = query.lower().strip()
 
     greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
@@ -199,11 +255,37 @@ def detect_intent(query: str) -> str:
     # 🚨 Guardrail (important)
     return "out_of_scope"
 
+def detect_intent(query: str) -> str:
+    return detect_intent_with_llm(query)
+
 
 def router_node(state: AgentState):
+    query = state["query"].lower()
+    memory = state.get("memory", {})
+
+    pending_leave = memory.get("pending_leave")
+
+    # Only continue leave flow if query looks like missing leave details
+    if pending_leave:
+
+        continuation_keywords = [
+            "may", "june", "july", "august",
+            "today", "tomorrow",
+            "because", "due to",
+            "fever", "pain", "sick",
+            "family", "function",
+            "2026",
+        ]
+
+        # Detect dates/numbers
+        has_number = any(char.isdigit() for char in query)
+
+        if has_number or any(word in query for word in continuation_keywords):
+            state["intent"] = "apply_leave"
+            return state
+
     state["intent"] = detect_intent(state["query"])
     return state
-
 
 def rbac_node(state: AgentState):
     valid, message = validate_user_or_message(state["user_id"])
@@ -238,51 +320,191 @@ def policy_node(state: AgentState):
     return state
 
 
+import re
+import json
+import dateparser
+from schemas import LeaveDetails
+
+
+def parse_date_to_2026(text: str):
+    try:
+        parsed = dateparser.parse(
+            text,
+            settings={
+                "PREFER_DATES_FROM": "future"
+            }
+        )
+
+        if not parsed:
+            return None
+
+        # Force project/demo year as 2026 if user did not mention year
+        if not re.search(r"\b20\d{2}\b", text):
+            parsed = parsed.replace(year=2026)
+
+        return parsed.strftime("%Y-%m-%d")
+
+    except Exception as e:
+        print("Date parsing error:", e)
+        return None
+
+
+def rule_based_leave_extract(query: str):
+    q = query.lower()
+
+    leave_type = None
+    reason = None
+    start_date = None
+    end_date = None
+
+    sick_words = [
+        "fever", "high fever", "stomach ache", "headache", "pain",
+        "not well", "sick", "ill", "doctor", "hospital", "medical",
+        "dental", "appointment"
+    ]
+
+    casual_words = [
+        "family function", "function", "marriage", "wedding",
+        "personal work", "travel", "vacation", "event"
+    ]
+
+    if any(word in q for word in sick_words):
+        leave_type = "sick"
+
+    if any(word in q for word in casual_words):
+        leave_type = "casual"
+
+    # reason extraction
+    reason_patterns = [
+        r"because of (.+)",
+        r"because (.+)",
+        r"due to (.+)",
+        r"for (.+)",
+    ]
+
+    for pattern in reason_patterns:
+        match = re.search(pattern, q)
+        if match:
+            reason = match.group(1).strip()
+            break
+
+    if not reason:
+        if leave_type == "sick":
+            for word in sick_words:
+                if word in q:
+                    reason = word
+                    break
+
+        elif leave_type == "casual":
+            for word in casual_words:
+                if word in q:
+                    reason = word
+                    break
+
+    # date range: from may 10 to may 12
+    range_match = re.search(
+        r"from\s+([a-zA-Z]+\s+\d{1,2})\s+to\s+([a-zA-Z]*\s*\d{1,2})",
+        q
+    )
+
+    if range_match:
+        first_date_text = range_match.group(1).strip()
+        second_date_text = range_match.group(2).strip()
+
+        # If second date is only number, reuse month from first date
+        if not re.search(r"[a-zA-Z]", second_date_text):
+            month = first_date_text.split()[0]
+            second_date_text = f"{month} {second_date_text}"
+
+        start_date = parse_date_to_2026(first_date_text)
+        end_date = parse_date_to_2026(second_date_text)
+
+    # date pair: may 25 and 26
+    if not start_date:
+        pair_match = re.search(
+            r"([a-zA-Z]+)\s+(\d{1,2})\s*(and|to|-)\s*(\d{1,2})",
+            q
+        )
+
+        if pair_match:
+            month = pair_match.group(1)
+            day1 = pair_match.group(2)
+            day2 = pair_match.group(4)
+
+            start_date = parse_date_to_2026(f"{month} {day1}")
+            end_date = parse_date_to_2026(f"{month} {day2}")
+
+    # single date: on may 24 / may 24
+    if not start_date:
+        single_match = re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}", q)
+
+        if single_match:
+            date_text = single_match.group(0)
+            start_date = parse_date_to_2026(date_text)
+            end_date = start_date
+
+    return {
+        "leave_type": leave_type,
+        "start_date": start_date,
+        "end_date": end_date,
+        "reason": reason,
+    }
+
 
 def extract_leave_details(query: str):
-    """
-    Extract leave details from natural language.
-    Uses LLM only for structured extraction.
-    """
+    # First try reliable rule-based extraction
+    rule_data = rule_based_leave_extract(query)
 
-    prompt = f"""
-Extract leave details from the user query.
+    # If rule extraction found useful data, keep it
+    if any(rule_data.values()):
+        return rule_data
+
+    # Fallback to LLM extraction
+    prompt = """
+You are extracting leave request details for an HR system.
 
 Return ONLY valid JSON.
-No explanation.
 
-Required JSON fields:
-leave_type: sick/casual/other/null
-start_date: YYYY-MM-DD/null
-end_date: YYYY-MM-DD/null
-reason: string/null
+JSON format:
+{
+  "leave_type": "sick" or "casual" or "other" or null,
+  "start_date": "YYYY-MM-DD" or null,
+  "end_date": "YYYY-MM-DD" or null,
+  "reason": "string" or null
+}
 
 Rules:
-- If only one date is mentioned, use same date for start_date and end_date.
-- If year is missing, assume 2026.
-- If leave type is not clear, return null.
-- If reason is not clear, return null.
+- fever, stomach ache, headache, hospital, doctor, dental = sick
+- family function, travel, marriage, vacation = casual
+- If one date only, same start and end date
+- If no date, return null dates
+- Assume year 2026 if not provided
 
 User query:
-{query}
+QUERY_PLACEHOLDER
 """
+
+    prompt = prompt.replace("QUERY_PLACEHOLDER", query)
 
     try:
         llm = get_llm(temperature=0)
         response = llm.invoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
 
+        content = response.content if hasattr(response, "content") else str(response)
         content = content.strip().replace("```json", "").replace("```", "").strip()
+
         data = json.loads(content)
+        parsed = LeaveDetails(**data)
 
         return {
-            "leave_type": data.get("leave_type"),
-            "start_date": data.get("start_date"),
-            "end_date": data.get("end_date"),
-            "reason": data.get("reason"),
+            "leave_type": parsed.leave_type,
+            "start_date": parsed.start_date,
+            "end_date": parsed.end_date,
+            "reason": parsed.reason,
         }
 
-    except Exception:
+    except Exception as e:
+        print("Leave extraction error:", e)
         return {
             "leave_type": None,
             "start_date": None,
@@ -296,26 +518,52 @@ def hr_node(state: AgentState):
     if state["intent"] == "apply_leave":
         details = extract_leave_details(state["query"])
 
+        memory = state.get("memory", {})
+        pending_leave = memory.get("pending_leave")
+
+        # Merge previous pending leave details with current user input
+        if pending_leave:
+            for key in ["leave_type", "start_date", "end_date", "reason"]:
+                if not details.get(key) and pending_leave.get(key):
+                    details[key] = pending_leave[key]
+
         missing = []
 
-        if not details["leave_type"]:
+        if not details.get("leave_type"):
             missing.append("leave type")
 
-        if not details["start_date"]:
+        if not details.get("start_date"):
             missing.append("start date")
 
-        if not details["end_date"]:
+        if not details.get("end_date"):
             missing.append("end date")
 
-        if not details["reason"]:
+        if not details.get("reason"):
             missing.append("reason")
 
         if missing:
+            memory["pending_leave"] = details
+            state["memory"] = memory
+
             state["response"] = (
-                "I need a few more details to apply your leave.\n\n"
-                f"Missing: {', '.join(missing)}\n\n"
-                "Example:\n"
-                "I want sick leave on May 5 because I have fever."
+                "I need a few more details to complete your leave request.\n\n"
+                f"Missing: {', '.join(missing)}"
+            )
+            return state
+
+        try:
+            start = datetime.strptime(details["start_date"], "%Y-%m-%d")
+            end = datetime.strptime(details["end_date"], "%Y-%m-%d")
+        
+            if end < start:
+                state["response"] = (
+                    "End date cannot be earlier than start date."
+                )
+                return state
+        
+        except Exception:
+            state["response"] = (
+                "Invalid leave dates provided."
             )
             return state
 
@@ -326,6 +574,11 @@ def hr_node(state: AgentState):
             details["end_date"],
             details["reason"]
         )
+
+        # Clear pending leave after successful submission
+        memory["pending_leave"] = None
+        state["memory"] = memory
+
         return state
 
     if state["intent"] == "leave_status":
@@ -333,33 +586,24 @@ def hr_node(state: AgentState):
         return state
 
     if state["intent"] == "approve_leave":
-        # format: approve leave 1
         parts = query.split()
 
-        if len(parts) < 3:
+        leave_id = None
+        for part in parts:
+            if part.isdigit():
+                leave_id = int(part)
+                break
+
+        if not leave_id:
             state["response"] = (
-                    "Please provide leave ID.\n\n"
-                    "Example:\n"
-                    "approve leave 2"
-                )
+                "Please provide leave ID.\n\n"
+                "Example:\n"
+                "approve leave 2"
+            )
             return state
 
-        leave_id = int(parts[2])
         state["response"] = approve_leave(state["user_id"], leave_id, "Approved")
         return state
-    
-    if state["intent"] == "leave_balance":
-        state["response"] = get_leave_balance(state["user_id"])
-        return state
-
-    if state["intent"] == "leave_history":
-        state["response"] = view_leave_history(state["user_id"])
-        return state
-
-    if state["intent"] == "pending_leaves":
-        state["response"] = view_pending_leaves(state["user_id"])
-        return state
-
 
     if state["intent"] == "reject_leave":
         parts = query.split()
@@ -371,10 +615,26 @@ def hr_node(state: AgentState):
                 break
 
         if not leave_id:
-            state["response"] = "Please mention the leave ID to reject. Example: reject leave 3"
+            state["response"] = (
+                "Please provide leave ID.\n\n"
+                "Example:\n"
+                "reject leave 3"
+            )
             return state
 
         state["response"] = reject_leave(state["user_id"], leave_id, "Rejected by manager")
+        return state
+
+    if state["intent"] == "leave_balance":
+        state["response"] = get_leave_balance(state["user_id"])
+        return state
+
+    if state["intent"] == "leave_history":
+        state["response"] = view_leave_history(state["user_id"])
+        return state
+
+    if state["intent"] == "pending_leaves":
+        state["response"] = view_pending_leaves(state["user_id"])
         return state
 
     if state["intent"] == "cancel_leave":
@@ -399,7 +659,6 @@ def hr_node(state: AgentState):
 
     state["response"] = "HR agent could not understand the request."
     return state
-
 
 def extract_issue_from_query(query: str):
     q = query.lower()
@@ -609,6 +868,33 @@ def unknown_node(state: AgentState):
     )
     return state
 
+def memory_node(state):
+    query = state["query"].lower()
+    memory = state.get("memory", {})
+
+    if "first query" in query:
+        first_query = memory.get("first_query")
+
+        if not first_query:
+            state["response"] = "No query found in current conversation."
+        else:
+            state["response"] = (
+                f"Your first query in this conversation was:\n\n{first_query}"
+            )
+
+    elif "last query" in query:
+        messages = memory.get("chat_history", [])
+
+        if len(messages) < 2:
+            state["response"] = "No previous query found."
+        else:
+            previous_query = messages[-2]
+            state["response"] = (
+                f"Your previous query was:\n\n{previous_query}"
+            )
+
+    return state
+
 
 def route_after_rbac(state):
     if state.get("response"):
@@ -653,6 +939,9 @@ def route_after_rbac(state):
         "web_search",
     ]:
         return "it"
+
+    if intent == "memory_query":
+       return "memory"
     
     return "out_of_scope"
 
@@ -669,6 +958,7 @@ def build_graph():
     workflow.add_node("greeting", greeting_node)
     workflow.add_node("thanks", thanks_node)
     workflow.add_node("bye", bye_node)
+    workflow.add_node("memory", memory_node)
     workflow.add_node("out_of_scope", out_of_scope_node)
 
     workflow.set_entry_point("router")
@@ -685,6 +975,7 @@ def build_graph():
         "policy": "policy_rag_agent",
         "hr": "hr_agent",
         "it": "it_agent",
+        "memory": "memory",
         "out_of_scope": "out_of_scope",
         "unknown": "unknown",
         "end": END,
@@ -698,6 +989,7 @@ def build_graph():
     workflow.add_edge("greeting", END)
     workflow.add_edge("thanks", END)
     workflow.add_edge("bye", END)
+    workflow.add_edge("memory", END)
     workflow.add_edge("out_of_scope", END)
     
     return workflow.compile()
@@ -712,6 +1004,9 @@ def get_agent_and_tool(intent: str):
 
     if intent == "policy":
         return "RAG Agent", "policy_retrieval"
+
+    if intent == "memory_query":
+        return "Memory Agent", "get_first_user_query"
 
     if intent in [
         "apply_leave",
@@ -750,7 +1045,7 @@ def get_agent_and_tool(intent: str):
     return "Unknown Agent", "unknown"
 
 
-def run_agent(user_id: str, query: str) -> str:
+def run_agent(user_id, query, memory):
     start_time = time.perf_counter()
 
     result = app_graph.invoke({
@@ -758,6 +1053,7 @@ def run_agent(user_id: str, query: str) -> str:
         "query": query,
         "intent": None,
         "response": None,
+        "memory": memory,
     })
 
     response_time = round(time.perf_counter() - start_time, 3)
@@ -778,6 +1074,8 @@ def run_agent(user_id: str, query: str) -> str:
         response=response,
         response_time=response_time
     )
+    save_memory(user_id, "user_query", query)
+    save_memory(user_id, "last_query", query)
 
     return response
 

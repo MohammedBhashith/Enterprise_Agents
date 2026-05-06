@@ -60,6 +60,10 @@ def mcp_request_asset(user_id: str, asset_type: str, reason: str) -> str:
     """Request an IT asset."""
     return request_asset(user_id, asset_type, reason)
 
+# def mcp_request_asset_wmcp(user_id: str, asset_type: str, reason: str) -> str:
+#     """Request an IT asset."""
+#     return request_asset(user_id, asset_type, reason)
+
 
 @mcp.tool
 def mcp_check_asset_request_status(user_id: str) -> str:

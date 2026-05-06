@@ -1,0 +1,169 @@
+digraph "Enterprise Multi-Agent AI Copilot" {
+	nodesep=0.7 rankdir=TB ranksep=0.9 splines=ortho
+	node [fontname=Arial fontsize=10 shape=box style="rounded,filled"]
+	A [label="User Input
+(Streamlit Chat UI)" fillcolor="#E3F2FD"]
+	B [label="run_agent()
+Starts timer
+Invokes LangGraph" fillcolor="#E3F2FD"]
+	C [label="Router Node
+Intent Detection" fillcolor="#FFF3E0"]
+	D [label="RBAC Node
+Validate User + Role" fillcolor="#FFEBEE"]
+	E [label="Route Decision
+Conditional Edges" fillcolor="#F3E5F5" shape=diamond]
+	A -> B
+	B -> C
+	C -> D
+	D -> E
+	CONV [label="Conversation Node
+hi / thanks / bye" fillcolor="#E8F5E9"]
+	GUARD [label="Guardrail Node
+Out-of-scope queries
+No unnecessary LLM call" fillcolor="#FFCDD2"]
+	E -> CONV [label="greeting / thanks / bye"]
+	E -> GUARD [label=out_of_scope]
+	RAG [label="RAG Agent
+Policy Q&A" fillcolor="#EDE7F6"]
+	RAG1 [label="Load HR / IT Policy Docs" fillcolor="#EDE7F6"]
+	RAG2 [label="Chunking
+RecursiveCharacterTextSplitter" fillcolor="#EDE7F6"]
+	RAG3 [label="Embeddings
+HuggingFace MiniLM" fillcolor="#EDE7F6"]
+	RAG4 [label="Vector DB
+ChromaDB" fillcolor="#EDE7F6"]
+	RAG5 [label="Top-K Retrieval
+RBAC Metadata Filter" fillcolor="#EDE7F6"]
+	RAG6 [label="Gemini / Groq
+Final Source-aware Answer" fillcolor="#EDE7F6"]
+	E -> RAG [label=policy]
+	RAG -> RAG1
+	RAG1 -> RAG2
+	RAG2 -> RAG3
+	RAG3 -> RAG4
+	RAG4 -> RAG5
+	RAG5 -> RAG6
+	HR [label="HR Agent" fillcolor="#E0F7FA"]
+	HR1 [label="Apply Leave
+Natural language extraction" fillcolor="#E0F7FA"]
+	HR2 [label="Validations
+Date / Holiday / Overlap / Balance" fillcolor="#E0F7FA"]
+	HR3 [label="SQLite
+Store leave request" fillcolor="#E0F7FA"]
+	HR4 [label="Manager Approval
+Approve / Reject" fillcolor="#E0F7FA"]
+	HR5 [label="Leave Balance
+Deduct after approval" fillcolor="#E0F7FA"]
+	HR6 [label="Leave Status / History
+Pending / Cancel" fillcolor="#E0F7FA"]
+	HR7 [label="Power Automate Email
+Manager + Employee" fillcolor="#E0F7FA"]
+	E -> HR [label="HR intents"]
+	HR -> HR1
+	HR1 -> HR2
+	HR2 -> HR3
+	HR3 -> HR4
+	HR4 -> HR5
+	HR -> HR6
+	HR4 -> HR7
+	IT [label="IT Agent
+Ticket Workflow" fillcolor="#FFFDE7"]
+	IT1 [label="Create Ticket
+Laptop / VPN / Outlook / Printer / Network / Software" fillcolor="#FFFDE7"]
+	IT2 [label="Check Known Outage" fillcolor="#FFFDE7"]
+	IT3 [label="Check Maintenance Schedule" fillcolor="#FFFDE7"]
+	IT4 [label="Check Duplicate Open Ticket" fillcolor="#FFFDE7"]
+	IT5 [label="SQLite
+Store Ticket" fillcolor="#FFFDE7"]
+	IT6 [label="Employee
+View Own Tickets" fillcolor="#FFFDE7"]
+	IT7 [label="IT Team
+View All / Assign / Resolve" fillcolor="#FFFDE7"]
+	IT8 [label="Power Automate Email
+Created + Resolved" fillcolor="#FFFDE7"]
+	E -> IT [label="IT ticket intents"]
+	IT -> IT1
+	IT1 -> IT2
+	IT2 -> IT3
+	IT3 -> IT4
+	IT4 -> IT5
+	IT -> IT6
+	IT -> IT7
+	IT5 -> IT8
+	IT7 -> IT8
+	AS [label="Asset Agent
+Asset Request Workflow" fillcolor="#F1F8E9"]
+	AS1 [label="Employee Requests Asset
+Laptop / Monitor / Keyboard / Mouse / VPN Token / Software License" fillcolor="#F1F8E9"]
+	AS2 [label="SQLite
+Store Asset Request" fillcolor="#F1F8E9"]
+	AS3 [label="Manager Approval
+Approve / Reject" fillcolor="#F1F8E9"]
+	AS4 [label="IT Approval
+Approve / Reject" fillcolor="#F1F8E9"]
+	AS5 [label="Inventory Validation
+Check availability" fillcolor="#F1F8E9"]
+	AS6 [label="Fulfillment
+Reduce inventory count" fillcolor="#F1F8E9"]
+	AS7 [label="Asset Status
+Employee Tracking" fillcolor="#F1F8E9"]
+	AS8 [label="Power Automate Email
+Manager + Employee" fillcolor="#F1F8E9"]
+	E -> AS [label="asset intents"]
+	AS -> AS1
+	AS1 -> AS2
+	AS2 -> AS3
+	AS3 -> AS4
+	AS4 -> AS5
+	AS5 -> AS6
+	AS -> AS7
+	AS2 -> AS8
+	AS3 -> AS8
+	AS4 -> AS8
+	AS6 -> AS8
+	WEB [label="Web Search Fallback
+IT troubleshooting only" fillcolor="#ECEFF1"]
+	WEB1 [label="Serper API
+If configured" fillcolor="#ECEFF1"]
+	WEB2 [label="Safe fallback
+If API key missing" fillcolor="#ECEFF1"]
+	E -> WEB [label=web_search]
+	WEB -> WEB1
+	WEB -> WEB2
+	RESP [label="Final Response
+Returned to Streamlit" fillcolor="#E3F2FD"]
+	MEM [label="Memory
+Save last query" fillcolor="#F5F5F5"]
+	LOG [label="Logs
+User, query, intent, agent,
+tool, response, response time" fillcolor="#F5F5F5"]
+	UI [label="Display Response
+Chat / Dashboard / Logs Page" fillcolor="#E3F2FD"]
+	CONV -> RESP
+	GUARD -> RESP
+	RAG6 -> RESP
+	HR7 -> RESP
+	HR6 -> RESP
+	IT8 -> RESP
+	IT6 -> RESP
+	IT7 -> RESP
+	AS7 -> RESP
+	AS8 -> RESP
+	WEB1 -> RESP
+	WEB2 -> RESP
+	RESP -> MEM
+	MEM -> LOG
+	LOG -> UI
+	MCP [label="FastMCP Server
+External Tool Exposure" fillcolor="#FCE4EC"]
+	MCP1 [label="Exposed Tools
+apply_leave
+create_ticket
+request_asset
+check_status
+inventory_status" fillcolor="#FCE4EC"]
+	MCP2 [label="Same Backend Tools
+SQLite + Email + RBAC" fillcolor="#FCE4EC"]
+	MCP -> MCP1
+	MCP1 -> MCP2
+}

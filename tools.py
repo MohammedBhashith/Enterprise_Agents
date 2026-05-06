@@ -146,9 +146,9 @@ def check_leave_status(user_id: str):
     if not rows:
         return "No leave requests found."
 
-    result = "Your leave requests:\n"
+    result = "Your leave requests:\n\n"
     for row in rows:
-        result += f"Leave ID {row[0]} | {row[1]} | {row[2]} to {row[3]} | Status: {row[4]}\n"
+        result += f"Leave ID {row[0]} | {row[1]} | {row[2]} to {row[3]} | Status: {row[4]}\n\n"
 
     return result
 
@@ -803,7 +803,7 @@ def view_pending_leaves(user_id: str):
     for row in rows:
         result += (
             f"Leave ID {row[0]} | Type: {row[1]} | "
-            f"{row[2]} to {row[3]} | Reason: {row[4]} | Status: {row[5]}\n"
+            f"{row[2]} to {row[3]} | Reason: {row[4]} | Status: {row[5]}\n\n"
         )
 
     return result

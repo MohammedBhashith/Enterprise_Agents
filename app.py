@@ -119,7 +119,15 @@ elif page == "Chat Assistant":
         st.warning("Please enter a valid User ID in the sidebar.")
 
     chat_key = f"messages_{user_id}"
+    memory_key = f"conversation_memory_{user_id}"
 
+    if memory_key not in st.session_state:
+        st.session_state[memory_key] = {
+            "first_query": None,
+            "last_query": None,
+            "pending_leave": None,
+        }
+    
     if chat_key not in st.session_state:
         st.session_state[chat_key] = []
 
@@ -151,6 +159,16 @@ elif page == "Chat Assistant":
     query = st.chat_input("Ask about HR policies, leave, IT tickets, or assets...")
 
     if query:
+        memory = st.session_state[memory_key]
+
+        if memory["first_query"] is None:
+            memory["first_query"] = query
+        
+        memory["last_query"] = query
+        if "chat_history" not in memory:
+            memory["chat_history"] = []
+        
+        memory["chat_history"].append(query)
         st.session_state[chat_key].append({
             "role": "user",
             "content": query
@@ -163,7 +181,11 @@ elif page == "Chat Assistant":
             response = "Invalid user ID. Please enter a valid user ID in the sidebar."
         else:
             with st.spinner("Processing through LangGraph..."):
-                response = run_agent(user_id, query)
+                response = run_agent(
+                        user_id,
+                        query,
+                        st.session_state[memory_key]
+                    )
 
         st.session_state[chat_key].append({
             "role": "assistant",
