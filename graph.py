@@ -34,6 +34,7 @@ from tools import (
     resolve_ticket,
     check_asset_request_status,
     get_pending_leave_requests_for_manager,
+    get_pending_leave_requests_for_approver,
 )
 
 
@@ -563,8 +564,8 @@ QUERY_PLACEHOLDER
             "reason": None,
         }
 
-def format_manager_pending_leaves(manager_id: str):
-    rows = get_pending_leave_requests_for_manager(manager_id)
+def format_manager_pending_leaves(user_id: str):
+    rows = get_pending_leave_requests_for_approver(user_id)
 
     if not rows:
         return "No pending leave requests found."
@@ -583,8 +584,7 @@ def format_manager_pending_leaves(manager_id: str):
             f"- **Status:** {status}\n\n"
         )
 
-    return result
-
+    return result                                                                               
 def hr_node(state: AgentState):
     query = state["query"].lower()
 
@@ -954,20 +954,28 @@ def memory_node(state):
             state["response"] = (
                 f"Your first query in this conversation was:\n\n{first_query}"
             )
+
     elif any(phrase in query for phrase in [
         "last query",
         "previous query",
         "previous question",
         "what did i ask before",
         "earlier query",
-        ]):
+    ]):
+
+        messages = memory.get("chat_history", [])
+
         if len(messages) < 2:
             state["response"] = "No previous query found."
         else:
             previous_query = messages[-2]
+
             state["response"] = (
                 f"Your previous query was:\n\n{previous_query}"
             )
+
+    else:
+        state["response"] = "No memory information found."
 
     return state
 

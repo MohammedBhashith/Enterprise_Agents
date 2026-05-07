@@ -1056,3 +1056,35 @@ def reject_asset_manager(manager_id: str, request_id: int):
 
 def reject_asset_it(it_user_id: str, request_id: int):
     return approve_asset_it(it_user_id, request_id, "Rejected")
+
+
+def get_pending_leave_requests_for_approver(user_id: str):
+    user = get_user(user_id)
+
+    if not user:
+        return []
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if user["role"] in ["HR Team", "Admin"]:
+        cur.execute("""
+            SELECT lr.leave_id, lr.user_id, u.name, lr.leave_type, lr.start_date, lr.end_date, lr.reason, lr.status
+            FROM leave_requests lr
+            JOIN users u ON lr.user_id = u.user_id
+            WHERE lr.status = 'Pending'
+            ORDER BY lr.leave_id DESC
+        """)
+    else:
+        cur.execute("""
+            SELECT lr.leave_id, lr.user_id, u.name, lr.leave_type, lr.start_date, lr.end_date, lr.reason, lr.status
+            FROM leave_requests lr
+            JOIN users u ON lr.user_id = u.user_id
+            WHERE lr.manager_id = ?
+            AND lr.status = 'Pending'
+            ORDER BY lr.leave_id DESC
+        """, (user_id,))
+
+    rows = cur.fetchall()
+    conn.close()
+    return rows
