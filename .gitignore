@@ -8,7 +8,6 @@ __pycache__/
 data/enterprise.db
 data/chroma_db/
 
-*.png
 *.log
 
 .DS_Store
