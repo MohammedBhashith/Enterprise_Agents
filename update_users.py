@@ -13,9 +13,9 @@ WHERE user_id = ?
 # Update MGR001
 cur.execute("""
 UPDATE users
-SET name = ?, email = ?
+SET name = ?, email = ?, department = ? 
 WHERE user_id = ?
-""", ("Hisham", "mohdbhashith313@gmail.com", "MGR001"))
+""", ("Hisham", "mohdbhashith313@gmail.com", "Manager Team", "MGR001"))
 
 # Update MGR001
 cur.execute("""
@@ -26,9 +26,9 @@ WHERE user_id = ?
 
 cur.execute("""
 UPDATE users
-SET name = ?, email = ?
+SET name = ?, email = ? , department = ?
 WHERE user_id = ?
-""", ("Aman","Mohammed.Bhashith@novigosolutions.com", "EMP002"))
+""", ("Aman","Mohammed.Bhashith@novigosolutions.com","Engineering", "EMP002"))
 
 
 conn.commit()

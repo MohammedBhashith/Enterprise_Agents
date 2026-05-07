@@ -335,8 +335,8 @@ elif page == "IT Dashboard":
                     with assign_col:
                         engineer_id = st.text_input(
                             f"Engineer for Ticket {ticket_id}",
-                            value=assigned_engineer or "IT001",
-                            key=f"engineer_{ticket_id}"
+                            value=assigned_engineer or "EMP001"                                                                                                                                                 ,
+                            key=f"engineer_{ticket_id}"                                                             
                         )
 
                         if st.button(f"Assign Ticket {ticket_id}", key=f"assign_{ticket_id}"):

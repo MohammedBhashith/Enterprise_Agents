@@ -33,6 +33,7 @@ from tools import (
     get_inventory_status,
     resolve_ticket,
     check_asset_request_status,
+    get_pending_leave_requests_for_manager,
 )
 
 
@@ -63,12 +64,14 @@ out_of_scope
 Rules:
 - If user wants leave, absence, sick leave, casual leave, not well, fever, dental appointment, family function, or asks to take off → apply_leave.
 - If user asks leave balance or remaining leaves → leave_balance.
-- If user asks previous/first/last query or what they asked before → memory_query.
+- If user asks previous query, previous question, last query, first query, what they asked before, earlier query, or conversation memory → memory_query..
 - If user asks HR/IT policy information → policy.
 - If user has laptop, VPN, Outlook, printer, network, or software issue → create_ticket.
 - If user asks their ticket status → ticket_status.
 - If user asks for monitor, laptop, keyboard, mouse, VPN token, or software license as an asset → request_asset.
 - If unrelated to HR, IT, assets, policies, or memory → out_of_scope.
+- If user asks to show all leave requests, all pending leave requests, leave requests for approval, or manager approval list → pending_leaves.
+- If user asks to cancel, reject, or approve a leave with an ID → cancel_leave, reject_leave, or approve_leave intent respectively.
 
 Return ONLY valid JSON with:
 intent, confidence, reason
@@ -130,11 +133,19 @@ def detect_intent_rules(query: str) -> str:
         return "leave_history"
 
     if any(phrase in q for phrase in [
-        "pending leave",
-        "pending requests",
-        "pending leave requests"
+    "pending leave",
+    "pending requests",
+    "pending leave requests",
+    "all leave requests",
+    "all the leave requests",
+    "show all leave requests",
+    "show all the leave requests",
+    "view all leave requests",
+    "view all the leave requests",
+    "show leave requests",
+    "leave requests for approval",
     ]):
-        return "pending_leaves"
+         return "pending_leaves"
     
     # Leave
     if any(phrase in q for phrase in [
@@ -163,7 +174,13 @@ def detect_intent_rules(query: str) -> str:
     
 
     if any(phrase in q for phrase in [
-        "leave status", "my leave", "leave history", "pending leave"
+        "leave status",
+        "my leave status",
+        "show my leave status",
+        "check my leave status",
+        "leave request status",
+        "approval status",
+        "leave approval status",
     ]):
         return "leave_status"
 
@@ -252,10 +269,44 @@ def detect_intent_rules(query: str) -> str:
     if "it approve asset" in q:
         return "approve_asset_it"
 
+    if any(phrase in q for phrase in [
+        "last query",
+        "previous query",
+        "previous question",
+        "what did i ask before",
+        "earlier query",
+        "first query",
+        "conversation memory",
+    ]):
+        return "memory_query"
+
     # 🚨 Guardrail (important)
     return "out_of_scope"
 
 def detect_intent(query: str) -> str:
+    rule_intent = detect_intent_rules(query)
+
+    high_priority_rules = [
+        "memory_query",
+        "pending_leaves",
+        "leave_status",
+        "approve_leave",
+        "reject_leave",
+        "cancel_leave",
+        "leave_balance",
+        "leave_history",
+        "ticket_status",
+        "view_all_tickets",
+        "assign_ticket",
+        "resolve_ticket",
+        "inventory_status",
+        "asset_status",
+        "request_asset",
+    ]
+
+    if rule_intent in high_priority_rules:
+        return rule_intent
+
     return detect_intent_with_llm(query)
 
 
@@ -360,7 +411,7 @@ def rule_based_leave_extract(query: str):
     sick_words = [
         "fever", "high fever", "stomach ache", "headache", "pain",
         "not well", "sick", "ill", "doctor", "hospital", "medical",
-        "dental", "appointment"
+        "dental", "appointment","surgery"
     ]
 
     casual_words = [
@@ -474,7 +525,7 @@ JSON format:
 }
 
 Rules:
-- fever, stomach ache, headache, hospital, doctor, dental = sick
+- fever, stomach ache, headache, hospital, doctor, dental, surgery = sick
 - family function, travel, marriage, vacation = casual
 - If one date only, same start and end date
 - If no date, return null dates
@@ -511,6 +562,28 @@ QUERY_PLACEHOLDER
             "end_date": None,
             "reason": None,
         }
+
+def format_manager_pending_leaves(manager_id: str):
+    rows = get_pending_leave_requests_for_manager(manager_id)
+
+    if not rows:
+        return "No pending leave requests found."
+
+    result = "### Pending Leave Requests for Approval\n\n"
+
+    for row in rows:
+        leave_id, emp_id, emp_name, leave_type, start_date, end_date, reason, status = row
+
+        result += (
+            f"#### Leave Request #{leave_id}\n"
+            f"- **Employee:** {emp_name} ({emp_id})\n"
+            f"- **Leave Type:** {leave_type}\n"
+            f"- **Dates:** {start_date} to {end_date}\n"
+            f"- **Reason:** {reason}\n"
+            f"- **Status:** {status}\n\n"
+        )
+
+    return result
 
 def hr_node(state: AgentState):
     query = state["query"].lower()
@@ -634,8 +707,8 @@ def hr_node(state: AgentState):
         return state
 
     if state["intent"] == "pending_leaves":
-        state["response"] = view_pending_leaves(state["user_id"])
-        return state
+       state["response"] = format_manager_pending_leaves(state["user_id"])
+       return state
 
     if state["intent"] == "cancel_leave":
         parts = query.split()
@@ -881,10 +954,13 @@ def memory_node(state):
             state["response"] = (
                 f"Your first query in this conversation was:\n\n{first_query}"
             )
-
-    elif "last query" in query:
-        messages = memory.get("chat_history", [])
-
+    elif any(phrase in query for phrase in [
+        "last query",
+        "previous query",
+        "previous question",
+        "what did i ask before",
+        "earlier query",
+        ]):
         if len(messages) < 2:
             state["response"] = "No previous query found."
         else:

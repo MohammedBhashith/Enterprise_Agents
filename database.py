@@ -147,8 +147,8 @@ def seed_data():
 
     users = [
         ("EMP001", "Bhashith", "Mohammed.Bhashith@novigosolutions.com", "Employee", "Engineering", "MGR001"),
-        ("EMP002", "Aman", "aman@company.com", "Employee", "HR", "MGR001"),
-        ("MGR001", "Hisham", "mohdbhashith313@gmail.com", "Manager", "Engineering", None),
+        ("EMP002", "Aman", "aman@company.com", "Employee", "Engineering", "MGR001"),
+        ("MGR001", "Hisham", "mohdbhashith313@gmail.com", "Manager", "Manager Team", None),
         ("HR001", "Sara", "sara@company.com", "HR Team", "HR", None),
         ("IT001", "John", "john@company.com", "IT Team", "IT", None),
         ("ADMIN001", "Admin", "admin@company.com", "Admin", "Admin", None),
