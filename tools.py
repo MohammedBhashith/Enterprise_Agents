@@ -1088,3 +1088,35 @@ def get_pending_leave_requests_for_approver(user_id: str):
     rows = cur.fetchall()
     conn.close()
     return rows
+
+def get_pending_asset_requests_for_approver(user_id: str):
+    user = get_user(user_id)
+
+    if not user:
+        return []
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    if user["role"] in ["HR Team", "Admin"]:
+        cur.execute("""
+            SELECT ar.request_id, ar.user_id, u.name, ar.asset_type, ar.reason, ar.status, ar.created_at
+            FROM asset_requests ar
+            JOIN users u ON ar.user_id = u.user_id
+            WHERE ar.manager_status = 'Pending'
+            ORDER BY ar.request_id DESC
+        """)
+    else:
+        cur.execute("""
+            SELECT ar.request_id, ar.user_id, u.name, ar.asset_type, ar.reason, ar.status, ar.created_at
+            FROM asset_requests ar
+            JOIN users u ON ar.user_id = u.user_id
+            WHERE u.manager_id = ?
+            AND ar.manager_status = 'Pending'
+            ORDER BY ar.request_id DESC
+        """, (user_id,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    return rows

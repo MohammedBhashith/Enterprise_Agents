@@ -9,6 +9,8 @@ from llm_config import get_llm
 from web_search import web_search
 import time
 from pydantic import ValidationError
+import re
+from schemas import LeaveDetails
 
 from schemas import IntentResult, LeaveDetails
 
@@ -35,6 +37,7 @@ from tools import (
     check_asset_request_status,
     get_pending_leave_requests_for_manager,
     get_pending_leave_requests_for_approver,
+    get_pending_asset_requests_for_approver,
 )
 
 
@@ -73,6 +76,10 @@ Rules:
 - If unrelated to HR, IT, assets, policies, or memory → out_of_scope.
 - If user asks to show all leave requests, all pending leave requests, leave requests for approval, or manager approval list → pending_leaves.
 - If user asks to cancel, reject, or approve a leave with an ID → cancel_leave, reject_leave, or approve_leave intent respectively.
+- If the user asks about company-wide leave entitlement, yearly leaves, allowed leaves, leave policy, or how many leaves employees get in a year → policy.
+- Only classify as leave_balance if the user asks about their own remaining/current balance using words like "my balance", "my remaining leaves", "how many leaves do I have left".
+- Only classify as apply_leave when the user clearly wants to SUBMIT a leave request with an absence reason/date, such as fever, function, travel, appointment, or sick.
+- If the user asks "can I take", "am I eligible", "is it allowed", "how many leaves", "leave rules", "leave policy", maternity leave, paternity leave, entitlement, or yearly leave allowance → policy, NOT apply_leave.
 
 Return ONLY valid JSON with:
 intent, confidence, reason
@@ -100,176 +107,22 @@ User query:
         return detect_intent_rules(query)
 
 
-def detect_intent_rules(query: str) -> str:
+def detect_intent_rules(query: str):
     q = query.lower().strip()
 
-    greetings = ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"]
-    thanks = ["thanks", "thank you", "thankyou", "thx"]
-    bye_words = ["bye", "goodbye", "see you", "exit"]
+    # Greetings
+    if q in ["hi", "hello", "hey", "good morning", "good evening"]:
+        return "greeting"
 
-    if q in greetings:
-     return "greeting"
+    # Bye
+    if q in ["bye", "goodbye", "see you"]:
+        return "bye"
 
-    if q in thanks:
-     return "thanks"
+    # Thanks
+    if "thank" in q:
+        return "thanks"
 
-    if q in bye_words:
-     return "bye"
-    
-    if any(phrase in q for phrase in [
-        "leave balance",
-        "remaining leave",
-        "remaining leaves",
-        "my balance",
-        "how many leaves do i have"
-    ]):
-        return "leave_balance"
-
-    if any(phrase in q for phrase in [
-        "leave history",
-        "applied leaves",
-        "my leaves",
-        "view leaves"
-    ]):
-        return "leave_history"
-
-    if any(phrase in q for phrase in [
-    "pending leave",
-    "pending requests",
-    "pending leave requests",
-    "all leave requests",
-    "all the leave requests",
-    "show all leave requests",
-    "show all the leave requests",
-    "view all leave requests",
-    "view all the leave requests",
-    "show leave requests",
-    "leave requests for approval",
-    ]):
-         return "pending_leaves"
-    
-    # Leave
-    if any(phrase in q for phrase in [
-        "apply leave",
-        "request leave",
-        "i need leave",
-        "take leave",
-        "i want leave",
-        "i want sick leave",
-        "i want casual leave",
-        "need sick leave",
-        "need casual leave",
-        "leave on",
-        "leave from"
-    ]):
-        return "apply_leave"
-
-    # HR / Policy
-    if any(phrase in q for phrase in [
-        "policy", "notice period", "casual leave", "sick leave",
-        "work from home", "maternity", "how many leaves",
-        "total leaves", "leave allowed"
-    ]):
-        return "policy"
-
-    
-
-    if any(phrase in q for phrase in [
-        "leave status",
-        "my leave status",
-        "show my leave status",
-        "check my leave status",
-        "leave request status",
-        "approval status",
-        "leave approval status",
-    ]):
-        return "leave_status"
-
-    if "approve leave" in q:
-        return "approve_leave"
-    
-    if "reject leave" in q:
-        return "reject_leave"
-
-    if "cancel leave" in q:
-        return "cancel_leave"
-    
-
-    if any(phrase in q for phrase in [
-        "all tickets",
-        "view all tickets",
-        "show all tickets"
-    ]):
-        return "view_all_tickets"
-
-    if "assign ticket" in q:
-        return "assign_ticket"
-
-    if "resolve ticket" in q:
-        return "resolve_ticket"
-
-    if any(phrase in q for phrase in [
-        "inventory status",
-        "show inventory",
-        "available assets"
-    ]):
-        return "inventory_status"
-    
-    if any(phrase in q for phrase in [
-    "asset status",
-    "my asset",
-    "my assets",
-    "track asset"
-    ]):
-      return "asset_status"
-
-    if any(phrase in q for phrase in [
-        "request asset",
-        "need monitor",
-        "need laptop",
-        "need keyboard",
-        "need mouse",
-        "need vpn token",
-        "need software license",
-        "i need a monitor",
-        "i need a laptop",
-    ]):
-        return "request_asset"
-
-    if any(word in q for word in ["how to fix", "solution", "troubleshoot", "resolve error", "error code"]):
-         if any(it_word in q for it_word in ["outlook", "vpn", "printer", "network", "laptop", "software"]):
-            return "web_search"
-
-    # IT (natural language supported)
-    if any(phrase in q for phrase in [
-        "laptop", "vpn", "outlook", "email issue",
-        "printer", "network", "software", "install"
-    ]):
-        return "create_ticket"
-
-    if "ticket status" in q or "my ticket" in q:
-        return "ticket_status"
-
-    # Asset
-    if any(phrase in q for phrase in [
-    "request asset",
-
-    "need monitor", "need laptop", "need keyboard", "need mouse",
-    "need vpn", "need vpn token", "need software", "need license",
-
-    "i need a monitor", "i need a laptop", "i need a keyboard", "i need a mouse",
-    "i need vpn", "i need vpn token", "i need software", "i need license",
-
-    "require monitor", "require laptop", "require keyboard", "require mouse",
-    ]):
-     return "request_asset"
-
-    if "manager approve asset" in q:
-        return "approve_asset_manager"
-
-    if "it approve asset" in q:
-        return "approve_asset_it"
-
+    # Memory queries
     if any(phrase in q for phrase in [
         "last query",
         "previous query",
@@ -277,38 +130,68 @@ def detect_intent_rules(query: str) -> str:
         "what did i ask before",
         "earlier query",
         "first query",
-        "conversation memory",
     ]):
         return "memory_query"
 
-    # 🚨 Guardrail (important)
-    return "out_of_scope"
+    return None
 
 def detect_intent(query: str) -> str:
-    rule_intent = detect_intent_rules(query)
+    q = query.lower().strip()
 
-    high_priority_rules = [
-        "memory_query",
-        "pending_leaves",
-        "leave_status",
-        "approve_leave",
-        "reject_leave",
-        "cancel_leave",
-        "leave_balance",
-        "leave_history",
-        "ticket_status",
-        "view_all_tickets",
-        "assign_ticket",
-        "resolve_ticket",
-        "inventory_status",
-        "asset_status",
-        "request_asset",
+    # Safety guard:
+    # Policy/eligibility questions should NEVER trigger apply_leave
+    policy_question_patterns = [
+        "can i take",
+        "can we take",
+        "am i eligible",
+        "eligible for",
+        "allowed to take",
+        "is it allowed",
+        "maternity leave",
+        "paternity leave",
+        "leave policy",
+        "leave rules",
+        "policy for",
+        "rules for",
+        "how many leaves",
+        "how many casual leaves",
+        "how many sick leaves",
+        "leaves are allowed",
+        "leave entitlement",
+        "yearly leaves",
+        "per year",
     ]
 
-    if rule_intent in high_priority_rules:
+    if any(pattern in q for pattern in policy_question_patterns):
+        return "policy"
+
+    # Lightweight deterministic rules
+    rule_intent = detect_intent_rules(query)
+
+    if rule_intent:
         return rule_intent
 
-    return detect_intent_with_llm(query)
+    # Main LLM classification
+    llm_intent = detect_intent_with_llm(query)
+
+    # Final safety correction
+    question_markers = [
+        "can i",
+        "can we",
+        "am i",
+        "is it",
+        "allowed",
+        "eligible",
+        "what is",
+        "how many",
+        "tell me about",
+        "explain",
+    ]
+
+    if llm_intent == "apply_leave" and any(marker in q for marker in question_markers):
+        return "policy"
+
+    return llm_intent
 
 
 def router_node(state: AgentState):
@@ -372,10 +255,7 @@ def policy_node(state: AgentState):
     return state
 
 
-import re
-import json
-import dateparser
-from schemas import LeaveDetails
+
 
 
 def parse_date_to_2026(text: str):
@@ -589,6 +469,24 @@ def hr_node(state: AgentState):
     query = state["query"].lower()
 
     if state["intent"] == "apply_leave":
+        q = state["query"].lower()
+
+        policy_like_question = any(phrase in q for phrase in [
+            "can i take",
+            "am i eligible",
+            "eligible for",
+            "allowed to take",
+            "maternity leave",
+            "paternity leave",
+            "leave policy",
+            "leave rules",
+            "how many leaves",
+            "entitlement",
+        ])
+
+        if policy_like_question:
+            state["response"] = answer_policy_question(state["user_id"], state["query"])
+            return state
         details = extract_leave_details(state["query"])
 
         memory = state.get("memory", {})

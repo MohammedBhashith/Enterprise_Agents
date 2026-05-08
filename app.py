@@ -3,7 +3,7 @@ import streamlit as st
 from graph import run_agent
 from database import get_user
 from logger import get_logs
-from tools import get_pending_leave_requests_for_manager, approve_leave, reject_leave,get_all_ticket_rows,assign_ticket,resolve_ticket,get_inventory_status,get_pending_asset_requests_for_manager,get_pending_asset_requests_for_it,approve_asset_manager,approve_asset_it,reject_asset_manager,reject_asset_it,get_pending_leave_requests_for_approver
+from tools import get_pending_leave_requests_for_manager, approve_leave, reject_leave,get_all_ticket_rows,assign_ticket,resolve_ticket,get_inventory_status,get_pending_asset_requests_for_manager,get_pending_asset_requests_for_it,approve_asset_manager,approve_asset_it,reject_asset_manager,reject_asset_it,get_pending_leave_requests_for_approver,get_pending_asset_requests_for_approver
 
 
 st.set_page_config(
@@ -252,7 +252,7 @@ elif page == "Manager Approvals":
         st.divider()
         st.subheader("Manager Asset Approvals")
 
-        assets = get_pending_asset_requests_for_manager(user_id)
+        assets = get_pending_asset_requests_for_approver(user_id)
 
         if not assets:
             st.info("No pending asset requests.")
